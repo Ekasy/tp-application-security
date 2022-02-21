@@ -9,6 +9,7 @@ make run
 ## Пример
 1. HTTP-прокси
 ```
+$ curl -v -x http://127.0.0.1:8080 http://mail.ru
 *   Trying 127.0.0.1:8080...
 * TCP_NODELAY set
 * Connected to 127.0.0.1 (127.0.0.1) port 8080 (#0)
@@ -37,6 +38,7 @@ make run
 ```
 2. HTTPS-прокси
 ```
+$ curl -v -x http://127.0.0.1:8080 https://mail.ru
 *   Trying 127.0.0.1:8080...
 * TCP_NODELAY set
 * Connected to 127.0.0.1 (127.0.0.1) port 8080 (#0)
