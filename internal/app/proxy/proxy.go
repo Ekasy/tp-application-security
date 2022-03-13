@@ -30,6 +30,7 @@ func NewProxy(logger *logrus.Logger, store *store.Connection) *Proxy {
 
 func (p *Proxy) HandleHTTP(w http.ResponseWriter, r *http.Request) {
 	reqid, err := p.store.WriteRequest(r)
+	p.logger.Infof("New request with reqid: %s", reqid)
 	if err != nil {
 		return
 	}
@@ -91,6 +92,7 @@ func (p *Proxy) HandleHTTPS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	p.logger.Infof("New request with reqid: %s", reqid)
 
 	cert_, err := p.certificateManager.GenerateCertificate(r.URL.Hostname())
 	if err != nil {

@@ -4,8 +4,10 @@ import (
 	"crypto/tls"
 	"log"
 	"net/http"
+	"sa/internal/app/injector"
 	"sa/internal/app/proxy"
 	"sa/internal/app/store"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,6 +23,11 @@ func NewServer(addr string, logger *logrus.Logger, store *store.Connection) *Ser
 		server: http.Server{
 			Addr: addr,
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/inject") {
+					w = injector.InjectByReqId(r, w, store)
+					return
+				}
+
 				if r.Method == http.MethodConnect {
 					prx.HandleHTTPS(w, r)
 				} else {

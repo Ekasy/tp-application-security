@@ -52,7 +52,7 @@ func NewConnection(logger *logrus.Logger) *Connection {
 var MY_RANDOM *rand.Rand = rand.New(rand.NewSource(time.Now().Unix()))
 
 func generateReqId(n int) string {
-	var symbols = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$&*-_=?")
+	var symbols = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 	s := make([]rune, n)
 	for i := range s {
 		s[i] = symbols[MY_RANDOM.Intn(len(symbols))]
@@ -63,6 +63,7 @@ func generateReqId(n int) string {
 type Request struct {
 	Timestamp int                    `bson:"timestamp"`
 	Method    string                 `bson:"method"`
+	Url       string                 `bson:"url"`
 	Path      string                 `bson:"path"`
 	CgiParams map[string]string      `bson:"cgi_params"`
 	Header    map[string]string      `bson:"headers"`
@@ -114,6 +115,7 @@ func (conn *Connection) requestToBson(r *http.Request) (string, *bson.D) {
 	req := &Request{
 		Timestamp: int(time.Now().Unix()),
 		Method:    r.Method,
+		Url:       r.URL.String(),
 		Path:      r.URL.Path,
 		CgiParams: cgi_params,
 		Header:    header,
@@ -231,4 +233,15 @@ func (conn *Connection) WriteResponse(r *http.Response, reqid string) error {
 	}
 
 	return nil
+}
+
+func (conn *Connection) GetByRequestResponseReqId(reqid string) *Document {
+	result := conn.conn.FindOne(conn.ctx, bson.M{"reqid": reqid})
+	doc := &Document{}
+	err := result.Decode(doc)
+	if err != nil {
+		conn.logger.Info("[GetByRequestResponseReqId] cannot find document by reqid=%s: %s", reqid, err.Error())
+		return nil
+	}
+	return doc
 }
