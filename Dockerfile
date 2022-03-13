@@ -8,6 +8,7 @@ RUN go mod download
 COPY . .
 RUN go build ./cmd/main.go
 
+
 FROM ubuntu:20.04
 
 RUN apt-get -y update &&\
@@ -18,8 +19,10 @@ COPY --from=builder /app/main .
 
 COPY . .
 
-COPY /certs/ca.crt /usr/local/share/ca-certificates
-COPY /certs/ca.crt /etc/ssl/certs/
-RUN update-ca-certificates
+COPY /gen_certificate/ca.crt /usr/local/share/ca-certificates
+COPY /gen_certificate/ca.crt /etc/ssl/certs/
+
+RUN ./gen_certificate/gen_ca.sh &&\
+    update-ca-certificates
 
 CMD ./main

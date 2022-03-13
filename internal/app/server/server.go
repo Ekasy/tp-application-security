@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sa/internal/app/proxy"
+	"sa/internal/app/store"
 
 	"github.com/sirupsen/logrus"
 )
@@ -14,8 +15,8 @@ type Server struct {
 	logger *logrus.Logger
 }
 
-func NewServer(addr string, logger *logrus.Logger) *Server {
-	prx := proxy.NewProxy(logger)
+func NewServer(addr string, logger *logrus.Logger, store *store.Connection) *Server {
+	prx := proxy.NewProxy(logger, store)
 	return &Server{
 		server: http.Server{
 			Addr: addr,

@@ -1,28 +1,38 @@
 package proxy
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/tls"
 	"io"
 	"net/http"
+	"net/http/httputil"
 
+	"sa/internal/app/store"
 	"sa/internal/pkg/cert"
 
 	"github.com/sirupsen/logrus"
 )
 
 type Proxy struct {
-	mainCertificate *cert.Certificate
-	logger          *logrus.Logger
+	certificateManager *cert.CertificateManager
+	logger             *logrus.Logger
+	store              *store.Connection
 }
 
-func NewProxy(logger *logrus.Logger) *Proxy {
+func NewProxy(logger *logrus.Logger, store *store.Connection) *Proxy {
 	return &Proxy{
-		mainCertificate: cert.GetSertificate(),
-		logger:          logger,
+		certificateManager: cert.GetCertificateManager(),
+		logger:             logger,
+		store:              store,
 	}
 }
 
 func (p *Proxy) HandleHTTP(w http.ResponseWriter, r *http.Request) {
+	reqid, err := p.store.WriteRequest(r)
+	if err != nil {
+		return
+	}
 	response, err := p.DoRequest(r)
 	if err != nil {
 		return
@@ -39,6 +49,12 @@ func (p *Proxy) HandleHTTP(w http.ResponseWriter, r *http.Request) {
 	_, err = io.Copy(w, response.Body)
 	if err != nil {
 		p.logger.Error(err)
+	}
+
+	err = p.store.WriteResponse(response, reqid)
+	if err != nil {
+		p.logger.Error(err)
+		return
 	}
 }
 
@@ -71,16 +87,21 @@ func (p *Proxy) DoRequest(r *http.Request) (*http.Response, error) {
 }
 
 func (p *Proxy) HandleHTTPS(w http.ResponseWriter, r *http.Request) {
-	cert_, err := cert.CreateLeafCertificate(r.Host)
+	reqid, err := p.store.WriteRequest(r)
 	if err != nil {
-		p.logger.Errorf("[HandleHTTPS:CreateLeafCertificate] %s", err.Error())
+		return
+	}
+
+	cert_, err := p.certificateManager.GenerateCertificate(r.URL.Hostname())
+	if err != nil {
+		p.logger.Errorf("[HandleHTTPS:GenerateCertificate] %s", err.Error())
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
 	}
 
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{*cert_},
-		GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			return cert.CreateLeafCertificate(info.ServerName)
-		},
+		ServerName:   r.URL.Hostname(),
 	}
 
 	destination, err := tls.Dial("tcp", r.Host, tlsConfig)
@@ -104,6 +125,13 @@ func (p *Proxy) HandleHTTPS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, err = client.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
+	if err != nil {
+		client.Close()
+		p.logger.Errorf("[HandleHTTPS] cannot send established connection message %s", err.Error())
+		return
+	}
+
 	tlsConn := tls.Server(client, tlsConfig)
 	err = tlsConn.Handshake()
 	if err != nil {
@@ -113,11 +141,37 @@ func (p *Proxy) HandleHTTPS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go p.transfer(destination, tlsConn)
-	go p.transfer(tlsConn, destination)
+	go p.transferWithStore(tlsConn, destination, r, reqid)
 }
 
 func (p *Proxy) transfer(dest io.WriteCloser, source io.ReadCloser) {
 	defer dest.Close()
 	defer source.Close()
 	io.Copy(dest, source)
+}
+
+func (p *Proxy) transferWithStore(dest io.WriteCloser, source io.ReadCloser, r *http.Request, reqid string) {
+	defer dest.Close()
+	defer source.Close()
+
+	// start log answer (response) to database
+	buf_reader := bufio.NewReader(source)
+	response, err := http.ReadResponse(buf_reader, r)
+	if err != nil {
+		p.logger.Errorf("[transferWithStore] error in ReadResponse %s", err.Error())
+		return
+	}
+	err = p.store.WriteResponse(response, reqid)
+	if err != nil {
+		p.logger.Errorf("[transferWithStore] error in WriteResponse %s", err.Error())
+		return
+	}
+	b, err := httputil.DumpResponse(response, true)
+	if err != nil {
+		p.logger.Errorf("[transferWithStore] error in DumpResponse %s", err.Error())
+		return
+	}
+	// end log
+
+	io.Copy(dest, bytes.NewReader(b))
 }

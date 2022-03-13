@@ -3,6 +3,7 @@ package main
 import (
 	"sa/config"
 	"sa/internal/app/server"
+	"sa/internal/app/store"
 	"sa/internal/pkg/logger"
 
 	"github.com/sirupsen/logrus"
@@ -15,7 +16,8 @@ func main() {
 	}
 
 	logger := logger.NewLogger(conf.Server.LogLevel)
+	store := store.NewConnection(logger)
 
-	server := server.NewServer(conf.Server.Port, logger)
+	server := server.NewServer(conf.Server.Port, logger, store)
 	server.Start()
 }
